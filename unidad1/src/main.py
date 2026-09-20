@@ -1,64 +1,74 @@
-"""Punto de entrada del proyecto.
+"""Ejecuta las reglas, genera mensajes y guarda evidencias."""
 
-Orquesta el flujo completo: lee MODEL_PROVIDER del entorno, instancia el
-proveedor correspondiente (vía el factory), ejecuta un set de consultas de
-ejemplo aplicando la técnica de prompting elegida y vuelca prompt + respuesta
-de cada una a evidencias.md.
-
-Este archivo NO implementa detalles de ninguna API: eso vive en
-src/providers/. Tampoco arma prompts a mano: eso vive en
-src/prompt_templates.py.
-"""
-
+import json
 import os
+from datetime import datetime, timezone
+from time import perf_counter
 
 from dotenv import load_dotenv
 
+from src.decision_engine import evaluar_solicitud
 from src.prompt_templates import construir_prompt_few_shot
 from src.providers.factory import get_provider
 
-# --- Constantes del script (nada de "magic strings/numbers" inline) ---
-MODEL_PROVIDER_ENV_VAR = "MODEL_PROVIDER"
 EVIDENCIAS_FILE_PATH = "evidencias.md"
+LATENCIA_OBJETIVO_SEGUNDOS = 5
 
-# Técnica de prompting a usar. Cambiar por construir_prompt_chain_of_thought
-# si tu justificación de la consigna 3 fue chain-of-thought.
-CONSTRUIR_PROMPT = construir_prompt_few_shot
-
-# Reemplazar por al menos 3 consultas relacionadas con tu propio caso de uso (consigna 1).
-CONSULTAS_DE_EJEMPLO = [
-    "¿Cómo cancelo una suscripción activa?",
-    "¿Qué medios de pago aceptan?",
-    "¿Puedo cambiar mi plan en cualquier momento?",
+SOLICITUDES_DE_EJEMPLO = [
+    {
+        "nombre_completo": "Martina López",
+        "situacion_cendeu": 1,
+        "antiguedad_meses": 12,
+        "ingreso_promedio_mensual": 1_500_000,
+    },
+    {
+        "nombre_completo": "Nicolás Torres",
+        "situacion_cendeu": 2,
+        "antiguedad_meses": 10,
+        "ingreso_promedio_mensual": 1_200_000,
+    },
+    {
+        "nombre_completo": "Camila Ruiz",
+        "situacion_cendeu": 1,
+        "antiguedad_meses": 3,
+        "ingreso_promedio_mensual": 700_000,
+    },
 ]
 
 
-def leer_proveedor_configurado() -> str:
-    """Lee MODEL_PROVIDER del entorno y falla con un mensaje claro si falta."""
-    proveedor = os.environ.get(MODEL_PROVIDER_ENV_VAR)
-    if not proveedor:
-        raise ValueError(
-            f"Falta la variable de entorno {MODEL_PROVIDER_ENV_VAR}. "
-            "Definila en tu archivo .env como 'groq' o 'gemini'."
+def escribir_evidencias(resultados: list[dict], proveedor: str) -> None:
+    """Guarda entradas, decisiones, prompts, respuestas y tiempos."""
+    fecha = datetime.now(timezone.utc).isoformat()
+    lineas = [
+        "# Evidencias de ejecución\n",
+        f"Fecha de ejecución (UTC): {fecha}\n",
+        f"Proveedor: {proveedor}\n",
+        "Estrategia: few-shot prompting\n",
+        "Todas las solicitudes contienen datos ficticios.\n",
+    ]
+
+    for numero, resultado in enumerate(resultados, start=1):
+        solicitud = json.dumps(
+            resultado["solicitud"], ensure_ascii=False, indent=2
         )
-    return proveedor
+        decision = json.dumps(
+            resultado["decision"], ensure_ascii=False, indent=2
+        )
+        cumple = (
+            resultado["segundos"] <= LATENCIA_OBJETIVO_SEGUNDOS
+        )
 
-
-def ejecutar_consulta(provider, consulta: str) -> tuple[str, str]:
-    """Arma el prompt para una consulta y devuelve (prompt, respuesta)."""
-    prompt = CONSTRUIR_PROMPT(consulta)
-    respuesta = provider.generate(prompt)
-    return prompt, respuesta
-
-
-def escribir_evidencias(resultados: list[tuple[str, str, str]]) -> None:
-    """Vuelca consulta, prompt y respuesta de cada ejecución a un archivo Markdown."""
-    lineas = ["# Evidencias de ejecución\n"]
-    for numero, (consulta, prompt, respuesta) in enumerate(resultados, start=1):
-        lineas.append(f"## Consulta {numero}\n")
-        lineas.append(f"**Consulta original:** {consulta}\n")
-        lineas.append(f"**Prompt enviado al modelo:**\n\n```\n{prompt}\n```\n")
-        lineas.append(f"**Respuesta del modelo:**\n\n{respuesta}\n")
+        lineas.extend([
+            f"## Caso {numero}\n",
+            f"### Solicitud ficticia\n\n```json\n{solicitud}\n```\n",
+            f"### Decisión del motor\n\n```json\n{decision}\n```\n",
+            "### Prompt enviado\n\n"
+            f"```text\n{resultado['prompt']}\n```\n",
+            f"### Respuesta generada\n\n{resultado['respuesta']}\n",
+            f"Tiempo de generación: {resultado['segundos']:.3f} s.\n",
+            "Cumple el objetivo de hasta 5 segundos: "
+            f"{'sí' if cumple else 'no'}.\n",
+        ])
 
     with open(EVIDENCIAS_FILE_PATH, "w", encoding="utf-8") as archivo:
         archivo.write("\n".join(lineas))
@@ -67,16 +77,39 @@ def escribir_evidencias(resultados: list[tuple[str, str, str]]) -> None:
 def main() -> None:
     load_dotenv()
 
-    proveedor_configurado = leer_proveedor_configurado()
-    provider = get_provider(proveedor_configurado)
+    proveedor = os.getenv("MODEL_PROVIDER")
+    if not proveedor:
+        raise ValueError("Falta configurar MODEL_PROVIDER en .env.")
 
+    provider = get_provider(proveedor)
     resultados = []
-    for consulta in CONSULTAS_DE_EJEMPLO:
-        prompt, respuesta = ejecutar_consulta(provider, consulta)
-        resultados.append((consulta, prompt, respuesta))
-        print(f"Consulta: {consulta}\nRespuesta: {respuesta}\n")
 
-    escribir_evidencias(resultados)
+    for solicitud in SOLICITUDES_DE_EJEMPLO:
+        decision = evaluar_solicitud(solicitud)
+
+        # Medimos desde que el motor ya tiene la decisión.
+        inicio = perf_counter()
+        prompt = construir_prompt_few_shot(decision)
+        respuesta = provider.generate(prompt)
+        segundos = perf_counter() - inicio
+
+        if not isinstance(respuesta, str) or not respuesta.strip():
+            raise RuntimeError("El proveedor devolvió una respuesta vacía.")
+
+        resultados.append({
+            "solicitud": solicitud,
+            "decision": decision,
+            "prompt": prompt,
+            "respuesta": respuesta,
+            "segundos": segundos,
+        })
+
+        print(f"Cliente: {solicitud['nombre_completo']}")
+        print(f"Decisión del motor: {decision['resultado']}")
+        print(f"Mensaje: {respuesta}")
+        print(f"Tiempo de generación: {segundos:.3f} s\n")
+
+    escribir_evidencias(resultados, proveedor)
     print(f"Evidencias guardadas en {EVIDENCIAS_FILE_PATH}")
 
 
