@@ -1,0 +1,42 @@
+{
+  "dataset": "FairCVdb",
+  "naturaleza": "sintetico",
+  "fuente": "https://github.com/BiDAlab/FairCVtest",
+  "sha256_original": "c8e4a17593764b26af05d32064ef240ea0270f78c7f8174009c006c082a5731f",
+  "filas_fuente": 24000,
+  "filas_muestra": 10000,
+  "semilla_muestra": 42,
+  "umbral_puntaje_sesgado": 0.5,
+  "genero": {
+    "0": "Masculino",
+    "1": "Femenino"
+  },
+  "features": [
+    "genero",
+    "afinidad_puesto",
+    "formacion",
+    "experiencia",
+    "recomendacion",
+    "disponibilidad",
+    "idioma_1",
+    "idioma_2",
+    "idioma_3"
+  ],
+  "target": "preseleccionado",
+  "division_plantilla": {
+    "train": 0.7,
+    "test": 0.3,
+    "semilla": 42
+  },
+  "conteos_por_genero_y_clase": {
+    "0": {
+      "0": 3758,
+      "1": 1203
+    },
+    "1": {
+      "0": 4607,
+      "1": 432
+    }
+  },
+  "limite": "Experimento sintetico; no reproduce datos ni resultados internos de Amazon."
+}

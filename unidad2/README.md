@@ -1,227 +1,141 @@
-# Unidad 2 — Calidad, Seguridad y Mejores Prácticas: auditoría de equidad
+# Unidad 2 — Auditoría de sesgo de género en selección de personal
 
-Plantilla base para el componente práctico (consignas 7 a 11) del Análisis de Caso
-Individual de la Unidad 2, Seminario de Ciencia de Datos II. Este README explica cómo
-completar tu entrega individual a partir de esta plantilla.
+Autor: Tadeo Rivas. Seminario de Ciencia de Datos II, Universidad CAECE.
 
-> Las consignas 1 a 6 (selección del caso, descripción del sistema, evidencia de sesgo,
-> técnicas de XAI/auditoría preventivas, evaluación bajo marco de IA responsable, propuesta
-> de mejoras) se responden en un documento aparte (Word/PDF) y no generan código. Este
-> repositorio cubre exclusivamente la parte ejecutable (consignas 7 a 11). Ver el texto
-> completo en [`docs/actividad-unidad2.md`](docs/actividad-unidad2.md).
+Se analiza el sistema experimental de reclutamiento de Amazon documentado por
+Dastin (2018). La práctica estudia un mecanismo análogo con FairCVdb. Sus datos
+y resultados corresponden a una simulación, no al sistema interno de Amazon.
 
-**El código ya está completo y funciona de punta a punta sin que edites nada.** Tu trabajo
-es: (1) correrlo tal cual para ver el flujo completo, (2) apuntarlo a tu propio dataset vía
-variables de entorno, y (3) escribir la interpretación de los resultados en `evidencias.md`
-(marcada con `> TODO estudiante`). No hace falta que implementes ni modifiques el pipeline.
+## Dataset y modelo
 
-## 1. Preparar el entorno (consigna 7.a y 7.b)
+[FairCVdb](https://github.com/BiDAlab/FairCVtest), de BiDAlab, contiene 24.000
+perfiles sintéticos para investigar sesgos en reclutamiento. Se utiliza una
+muestra aleatoria de 10.000 perfiles, con semilla 42, de su componente tabular.
+El atributo sensible es `genero`: 0 = masculino y 1 = femenino. La elección
+del dataset está sujeta a la aprobación docente indicada en la consigna.
 
-Este repositorio agrupa varias unidades, cada una con su propio entorno. Por eso, para
-crear el Codespace **no uses el botón de un clic** ("Create codespace on main"): hay que
-elegir explícitamente la configuración de Unidad 2.
+La etiqueta `preseleccionado` vale 1 si el puntaje con sesgo de género publicado
+por los autores es mayor o igual a 0,5. Ese umbral es una decisión de esta
+práctica. Los predictores son género, afinidad con el puesto, formación,
+experiencia, recomendación, disponibilidad y tres variables de idiomas.
+No se utilizan nombres, biografías, fotografías, identificadores ni puntajes
+originales como predictores. El género se conserva como entrada para auditar
+su uso directo, de acuerdo con la plantilla de la cátedra.
 
-1. Desde este repositorio en GitHub, hacé clic en **Use this template** (o forkealo).
-2. En tu copia, andá a **Code → Codespaces** y hacé clic en los **tres puntos ("...")**
-   junto al botón verde → **New with options**.
-3. En el campo **Dev container configuration**, elegí **unidad2-seminario-cd2** y
-   confirmá con **Create codespace**.
-4. Esperá a que termine de levantar el Codespace: instala automáticamente las
-   dependencias de `requirements.txt` (`fairlearn`, `scikit-learn`, `shap`, `pandas`,
-   `matplotlib`), no hace falta ningún paso manual. La terminal se abre directamente
-   parada en la carpeta `unidad2/`.
+Se entrena una regresión logística con división estratificada 70/30 y semilla
+42. El preprocesamiento se ajusta solamente sobre entrenamiento. Se aplica
+`ExponentiatedGradient` de Fairlearn con la restricción `demographic_parity`.
+Los módulos de `src/` provienen de la plantilla y se mantienen sin cambios.
 
-## 2. Correr la demo (para ver el flujo completo antes de tocar nada)
+## Resultados de la ejecución del 19 de octubre de 2026
 
-No hace falta configurar nada todavía. Corré directamente:
+Métricas sobre el conjunto de prueba; valores redondeados a tres decimales.
 
-```bash
-python -m src.main
-```
+| Escenario | Exactitud | Demographic parity difference | Equalized odds difference |
+|---|---:|---:|---:|
+| Modelo base | 0,978 | 0,149 | 0,050 |
+| ExponentiatedGradient | 0,934 | 0,021 | 0,315 |
 
-Como no hay `.env`, el script usa automáticamente un dataset público de demostración
-([Adult Income](https://archive.ics.uci.edu/dataset/2/adult), atributo sensible: género) y
-genera:
+El modelo base selecciona al 23,9 % del grupo masculino y al 9,0 % del
+femenino. La mitigación reduce la brecha de selección de 14,9 a 2,1 puntos
+porcentuales, con una caída de 4,4 puntos en exactitud y un aumento de la
+brecha de errores. La exactitud y equalized odds se calculan contra etiquetas
+deliberadamente sesgadas; no representan una evaluación neutral de la
+idoneidad laboral. La interpretación completa está en [evidencias.md](evidencias.md).
 
-- `evidencias.md`: configuración usada, métricas de equidad del modelo base, tabla
-  comparativa antes/después de la mitigación, y las explicaciones SHAP.
-- `outputs/*.png`: los gráficos correspondientes (comparación de métricas, dos waterfalls
-  SHAP y un resumen global), listos para pegar en tu informe.
 
-Revisá esos dos artefactos para entender qué genera cada corrida — es exactamente lo que
-vas a interpretar con tu propio dataset en el paso 6.
+Los casos SHAP del modelo base comparan perfiles con competencias constantes:
 
-## 3. Configurar tu propio dataset (consigna 8.a)
+| Índice en test | Probabilidad con género femenino | Con género masculino | Decisiones femenino → masculino | SHAP de género femenino en log-odds |
+|---|---:|---:|---|---:|
+| 44 | 0,2831 | 0,9986 | 0 → 1 | −3,435 |
+| 78 | 0,7193 | 0,9998 | 1 → 1 | −3,435 |
 
-1. Elegí un dataset público, tabular, con un atributo sensible identificable (género,
-   raza, edad, etc.), coherente con el caso que elegiste en la consigna 1. **Sujeto a
-   aprobación previa del docente**, igual que la elección del caso.
-2. Colocá el CSV dentro de `data/` (esa carpeta no se versiona, salvo `.gitkeep`).
-3. Copiá `.env.example` a `.env` y completá:
+El segundo perfil conserva la preselección, aunque su puntaje también es
+sensible al género. No constituye una prueba de ausencia de discriminación.
 
-   ```bash
-   cp .env.example .env
-   ```
+## Ejecución en GitHub Codespaces
 
-   ```env
-   DATASET_PATH=data/tu_dataset.csv
-   TARGET_COLUMN=nombre_de_tu_columna_objetivo
-   SENSITIVE_ATTRIBUTE=nombre_de_tu_atributo_sensible
-   POSITIVE_LABEL=valor_que_se_considera_clase_positiva
-   ```
-
-   `POSITIVE_LABEL` es el valor de `TARGET_COLUMN` que el modelo intenta predecir como
-   "positivo" (ej. `"Sí"`, `"1"`, `">50K"`, `"aprobado"`).
-
-## 4. Si tu CSV viene "crudo": limpieza rápida (ETL) antes de correrlo
-
-Muchos datasets públicos (por ejemplo, el de [COMPAS](https://github.com/propublica/compas-analysis)
-que suele usarse para casos de sesgo racial en sistemas judiciales) vienen con decenas de
-columnas que no deberías usar tal cual: identificadores, texto libre, fechas, o columnas que
-directamente filtran el resultado que el modelo tiene que predecir (*data leakage*). El
-pipeline no adivina cuáles son: como pide RF-01, acepta cualquier CSV y entrena usando
-**todas** las columnas salvo la que configures como `TARGET_COLUMN`. Elegir qué columnas
-tienen sentido como *features* es trabajo de preparación de datos, igual que elegir el
-dataset en el paso 3.
-
-**Señales de que tu CSV necesita este paso:**
-
-- **La exactitud del modelo base te da sospechosamente alta** (ej. > 0.95) en un problema
-  que no debería ser tan fácil de predecir → probablemente alguna columna "filtra" la
-  respuesta (contiene información que solo se conocería después de tener el resultado real).
-- **La ejecución se cuelga o tarda muchísimo** sin terminar → probablemente hay columnas de
-  texto libre o identificadores casi únicos por fila (nombres, IDs, fechas) que el
-  `OneHotEncoder` expande en miles de columnas nuevas, disparando el tiempo de entrenamiento.
-- **Advertencia de sklearn** `Skipping features without any observed values` → hay una
-  columna enteramente vacía; no rompe la corrida, pero es señal de que el CSV no está curado.
-
-**Solución:** quedate solo con las columnas que tengan sentido como features predictoras más
-tu columna objetivo. Ejemplo real (el que se usó para llegar a una exactitud realista con el
-dataset COMPAS, filtrando primero registros inválidos según el criterio del propio análisis
-de ProPublica, y descartando columnas que filtran el resultado como `is_recid` o `event`):
+Abrir la rama `unidad2` y la configuración `unidad2-seminario-cd2`, ubicada
+en `.devcontainer/unidad2/devcontainer.json`. En la terminal de Codespaces:
 
 ```bash
-python -c "
-import pandas as pd
-
-df = pd.read_csv('data/tu_dataset_crudo.csv')
-
-# Filtros de calidad específicos del dataset (ajustá o quitá según el tuyo)
-# df = df[df['alguna_columna_de_control'] != 'valor_invalido']
-
-columnas = ['columna_a', 'columna_b', 'tu_atributo_sensible', 'tu_columna_objetivo']
-df = df[columnas].dropna()
-df.to_csv('data/tu_dataset_limpio.csv', index=False)
-print(df.shape)
-"
+cd "$(git rev-parse --show-toplevel)/unidad2"
+python -m pip install -r requirements.txt
+python preparar_faircvdb.py
+python ejecutar_faircvdb.py
+python completar_shap_faircvdb.py
 ```
 
-Después, apuntá `DATASET_PATH` en tu `.env` al CSV limpio (`data/tu_dataset_limpio.csv`) y
-volvé a correr `python -m src.main`. Una exactitud que baja a un rango más razonable (ni
-sospechosamente perfecta ni al nivel del azar) es la señal de que la limpieza funcionó.
-
-## 5. Elegir la técnica de mitigación y la restricción de equidad (consigna 9.a)
-
-En el mismo `.env`, elegís cómo mitigar el sesgo sin tocar código:
+El primer script descarga la versión oficial, comprueba su SHA256 y prepara
+el CSV y `.env` si no existe. La configuración usada es:
 
 ```env
-# "exponentiated_gradient", "threshold_optimizer", o "ambos" para comparar las dos
+DATASET_PATH=data/faircvdb_genero.csv
+TARGET_COLUMN=preseleccionado
+SENSITIVE_ATTRIBUTE=genero
+POSITIVE_LABEL=1
 MITIGATION_METHOD=exponentiated_gradient
-
-# "demographic_parity" o "equalized_odds"
 FAIRNESS_CONSTRAINT=demographic_parity
 ```
 
-| Variable | Qué hace |
-|---|---|
-| `exponentiated_gradient` | Reentrena una secuencia de modelos reponderados hasta satisfacer la restricción. Suele preservar mejor la exactitud. |
-| `threshold_optimizer` | No reentrena: ajusta un umbral de decisión distinto por grupo sobre el modelo ya entrenado. Más simple de explicar, pero necesita el atributo sensible también al predecir. |
-| `ambos` | Corre las dos técnicas en la misma ejecución y las compara en la misma tabla — útil para la discusión de la consigna 9.c. |
-| `demographic_parity` | Busca que la tasa de selección (predicciones positivas) sea similar entre grupos. |
-| `equalized_odds` | Busca que la tasa de verdaderos/falsos positivos sea similar entre grupos — más exigente. |
+`ejecutar_faircvdb.py` fija la semilla y ejecuta la plantilla. El complemento
+SHAP reconstruye el mismo modelo base y compara dos perfiles femeninos con
+su alternativa masculina, manteniendo las competencias constantes. En un
+caso cambia la decisión y en el otro se mantiene. Esto último no implica
+ausencia de influencia del género sobre el puntaje.
 
-## 6. Ejecutar y generar tus evidencias (consignas 8, 9 y 10)
+`requirements.txt` fija python-dotenv 1.0.1, NumPy 1.26.4, pandas 2.2.3,
+scikit-learn 1.5.2, Fairlearn 0.11.0, SHAP 0.46.0 y Matplotlib 3.9.2.
+El contenedor configura Python 3.11. La división original de FairCVdb se
+reemplaza por la división de la plantilla sobre la muestra seleccionada.
 
-```bash
-python -m src.main
-```
+## Archivos de evidencia
 
-El script imprime en la terminal la exactitud de cada escenario y confirma dónde quedaron
-guardadas las evidencias. Si ya existía un `evidencias.md` de una corrida anterior, se
-conserva como `evidencias.anterior.md` antes de generar el nuevo (no perdés nada de lo que
-ya hayas empezado a escribir, pero revisá igual que no se te haya pisado algo).
+- `evidencias.md`: métricas, interpretación y comparación individual con SHAP.
+- `outputs/comparacion_metricas.png`: comparación antes y después.
+- `outputs/shap_resumen.png`: contribuciones globales del modelo base.
+- `outputs/shap_caso_cambia_decision.png` y `shap_caso_mantiene_decision.png`:
+  explicaciones de los dos casos controlados.
+- `outputs/casos_shap.md` y `outputs/casos_shap.json`: decisiones,
+  probabilidades y contribuciones firmadas de los casos.
+- `outputs/preparacion_faircvdb.json`: procedencia, reglas y composición
+  de la muestra.
 
-Abrí `evidencias.md` y completá los bloques marcados `> TODO estudiante:` — ahí es donde
-conectás los números con el análisis conceptual de las consignas 1 a 6:
+El archivo `data/faircvdb_referencia.csv` conserva los puntajes originales y
+una referencia neutral sintética para seleccionar los casos SHAP. Se mantiene
+separado de los predictores. Los datos descargados y `.env` no se versionan;
+el código, este README, `evidencias.md` y las salidas sí se versionan.
 
-- **Auditoría base:** ¿el patrón de disparidad que ves es consistente con el sesgo
-  documentado en el caso real que elegiste (consigna 3)?
-- **Comparación antes/después:** ¿qué tan efectiva fue la mitigación? ¿bajó la exactitud a
-  cambio de más equidad? ¿qué limitaciones observaste (consigna 9.c)?
-- **SHAP:** ¿esta técnica hubiera permitido detectar el problema antes del despliegue
-  (consigna 4)?
+Una nueva ejecución del pipeline rota `evidencias.md` a
+`evidencias.anterior.md`; hay que conservar las interpretaciones al actualizar
+la evidencia. El complemento SHAP incorpora sus casos sin reemplazar los
+demás resultados.
 
-### Punto opcional de código
+## Fuentes y atribución
 
-En [`src/fairness_audit.py`](src/fairness_audit.py) hay un único lugar marcado
-`# TODO estudiante` donde podés sumar una métrica de equidad adicional de
-`fairlearn.metrics` (ej. `equalized_odds_ratio`) si querés enriquecer la comparación. Es
-completamente opcional: el resto del pipeline funciona igual sin tocarlo.
+- Dastin, J. (2018, 10 de octubre). *Amazon scraps secret AI recruiting tool
+  that showed bias against women*. Reuters.
+  https://www.reuters.com/article/us-amazon-com-jobs-automation-insight/amazon-scraps-secret-ai-recruiting-tool-that-showed-bias-against-women-idUSKCN1MK08G/
+- Peña, A., Serna, I., Morales, A., Fierrez, J., Ortega, A., Herrarte, A.,
+  Alcantara, M., y Ortega-Garcia, J. (2023). Human-Centric Multimodal Machine
+  Learning: Recent Advances and Testbed on AI-Based Recruitment.
+  *SN Computer Science, 4*, artículo 434. https://doi.org/10.1007/s42979-023-01733-0
+- Morales, A., Fierrez, J., Vera-Rodriguez, R., y Tolosana, R. (2021).
+  SensitiveNets: Learning Agnostic Representations with Application to Face
+  Images. *IEEE Transactions on Pattern Analysis and Machine Intelligence,
+  43*(6), 2158–2164. https://doi.org/10.1109/TPAMI.2020.3015420
+- De-Arteaga, M., Romanov, A., Wallach, H., Chayes, J., Borgs, C.,
+  Chouldechova, A., Geyik, S., Kenthapadi, K., y Kalai, A. T. (2019).
+  Bias in Bios: A Case Study of Semantic Representation Bias in a High-Stakes
+  Setting. *Proceedings of the Conference on Fairness, Accountability, and
+  Transparency*, 120–128. https://doi.org/10.1145/3287560.3287572
+- Plantilla de la cátedra: https://github.com/epirayucaece/ucaece-sem-cd2-act
+- Métricas de Fairlearn:
+  https://fairlearn.org/v0.11/user_guide/assessment/common_fairness_metrics.html
+- SHAP y regresión logística:
+  https://shap.readthedocs.io/en/latest/example_notebooks/tabular_examples/linear_models/Sentiment%20Analysis%20with%20Logistic%20Regression.html
 
-## 7. Errores comunes
-
-- `No se encontró el archivo '...' (DATASET_PATH)` → revisá que el CSV esté efectivamente
-  en `data/` y que la ruta en `.env` sea correcta.
-- `No se encontraron en el dataset las columnas [...]` → `TARGET_COLUMN` o
-  `SENSITIVE_ATTRIBUTE` no coinciden con los nombres reales de columnas de tu CSV (el
-  mensaje lista las columnas disponibles).
-- `POSITIVE_LABEL='...' no aparece en la columna '...'` → el valor no existe tal cual en tu
-  columna objetivo (revisá mayúsculas/espacios).
-- `MITIGATION_METHOD='...' no es válido` / `FAIRNESS_CONSTRAINT='...' no es válida` → usá
-  exactamente uno de los valores listados en el mensaje de error.
-- **La corrida no termina nunca, o la exactitud te da sospechosamente alta (> 0.95)** → tu
-  CSV probablemente tiene columnas de texto libre/IDs o columnas que filtran el resultado.
-  Ver la sección 4 (limpieza rápida / ETL) antes de seguir.
-
-## 8. Registrar y entregar (consigna 11)
-
-1. Commiteá tu código (si hiciste el ajuste opcional), `evidencias.md` y los PNG de
-   `outputs/`.
-2. En el documento entregado (Word/PDF con las consignas 1 a 6), incluí el enlace a tu
-   repositorio.
-3. Este mismo README ya resume el dataset, el atributo sensible y las métricas
-   antes/después una vez que corriste el script con tu configuración — no hace falta que
-   agregues nada más acá salvo que quieras ampliar algún punto.
-
-## Estructura del repositorio
-
-```
-.devcontainer/
-└── unidad2/devcontainer.json         # config de Codespaces para Unidad 2 (Python 3.11)
-                                       # el repo agrupa varias unidades; cada una tiene
-                                       # su propia config bajo .devcontainer/<unidad>/
-unidad2/
-├── .env.example                      # variables de entorno esperadas (sin valores reales)
-├── docs/actividad-unidad2.md         # consigna oficial de cátedra
-├── requirements.txt
-├── data/                             # colocá acá tu dataset propio (no se versiona)
-├── outputs/                          # gráficos PNG generados por la corrida
-├── evidencias.md                     # generado por la corrida (métricas + interpretación)
-└── src/
-    ├── main.py                       # orquesta: config → datos → entrena → audita →
-    │                                 #   mitiga → audita → SHAP → gráficos → evidencias
-    ├── config.py                     # lee y valida las variables de entorno
-    ├── data_loader.py                # carga el dataset propio o el de demostración
-    ├── preprocessing.py              # imputación + codificación/escalado de features
-    ├── model_training.py             # split train/test + regresión logística base
-    ├── fairness_audit.py             # métricas de equidad de Fairlearn (contiene el
-    │                                 #   único TODO estudiante, opcional)
-    ├── explainability.py             # SHAP sobre el modelo base
-    ├── plots.py                      # genera los PNG de outputs/
-    ├── evidence_writer.py            # arma evidencias.md
-    └── mitigation/
-        ├── base_mitigator.py         # contrato común: fit(...) / predict(...)
-        ├── factory.py                # get_mitigator(nombre) según MITIGATION_METHOD
-        ├── exponentiated_gradient.py
-        └── threshold_optimizer.py
-```
+Los trabajos de Morales et al. y De-Arteaga et al. se incluyen como
+atribución de los recursos del benchmark, conforme a lo solicitado por sus
+autores. Esta práctica utiliza únicamente el componente tabular.

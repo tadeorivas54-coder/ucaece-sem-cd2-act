@@ -1,0 +1,33 @@
+{
+  "exactitud_base": 0.9776666666666667,
+  "casos": [
+    {
+      "caso": "cambia_decision",
+      "indice_test": 44,
+      "genero_original": 1,
+      "genero_alternativo": 0,
+      "etiqueta_sesgada": 0,
+      "referencia_neutral": 1,
+      "prediccion_original": 0,
+      "prediccion_alternativa": 1,
+      "probabilidad_original": 0.2831439033673101,
+      "probabilidad_alternativa": 0.9985539938097722,
+      "shap_genero_log_odds": -3.434554432430891,
+      "grafico": "outputs/shap_caso_cambia_decision.png"
+    },
+    {
+      "caso": "mantiene_decision",
+      "indice_test": 78,
+      "genero_original": 1,
+      "genero_alternativo": 0,
+      "etiqueta_sesgada": 1,
+      "referencia_neutral": 1,
+      "prediccion_original": 1,
+      "prediccion_alternativa": 1,
+      "probabilidad_original": 0.7193034818704565,
+      "probabilidad_alternativa": 0.9997768474936023,
+      "shap_genero_log_odds": -3.434554432430891,
+      "grafico": "outputs/shap_caso_mantiene_decision.png"
+    }
+  ]
+}
