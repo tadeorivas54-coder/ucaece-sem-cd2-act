@@ -70,7 +70,7 @@ instalación local, que le permita a cada estudiante:
 > **Nota sobre el devcontainer:** este repositorio es un monorepo con una carpeta por
 > unidad, así que la config de Codespaces de Unidad 1 **no vive dentro de `unidad1/`**,
 > sino en la raíz del repo bajo `.devcontainer/unidad1/devcontainer.json` (patrón de
-> "múltiples configuraciones" de GitHub Codespaces). Ver la sección 6 del `CLAUDE.md` raíz
+> "múltiples configuraciones" de GitHub Codespaces). Ver la sección 2 del `CLAUDE.md` raíz
 > para el detalle de por qué y cómo se replica este patrón en las demás unidades.
 
 ```
